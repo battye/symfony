@@ -16,6 +16,7 @@ use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Formatter\OutputFormatterStyle;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\PipedInput;
 use Symfony\Component\Console\Input\StreamableInputInterface;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -34,6 +35,9 @@ class QuestionHelper extends Helper
     private static $shell;
     private static $stty;
 
+    // Set to null because we want to test the condition on the first question
+    private static $piped = null;
+
     /**
      * Asks a question to the user.
      *
@@ -43,6 +47,31 @@ class QuestionHelper extends Helper
      */
     public function ask(InputInterface $input, OutputInterface $output, Question $question)
     {
+		// On the first run, check to see if we have any piped input
+		if (false !== self::$piped && false !== ftell(STDIN)) {
+			if (self::$piped instanceof PipedInput) {
+				$input = self::$piped;
+			} else {
+				// Get the lines from the piped input
+				$lines = '';
+				while (!feof(STDIN)) {
+					$lines .= fgets(STDIN);
+				}
+
+				// Create a stream
+				$stream = fopen('php://memory', 'r+', false);
+				fwrite($stream, $lines);
+				rewind($stream);
+
+				// Which we now override the input value with
+				$input = new PipedInput($stream);
+				self::$piped = $input;
+			}
+		} else {
+			// There's no pipe; proceed as normal
+			self::$piped = false;
+		}
+
         if ($output instanceof ConsoleOutputInterface) {
             $output = $output->getErrorOutput();
         }
